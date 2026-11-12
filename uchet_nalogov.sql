@@ -384,3 +384,551 @@ COMMIT;
 /*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
 /*!40101 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS */;
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
+
+SELECT
+    o.org_name              AS 'Организация',
+    o.inn                   AS 'ИНН',
+    o.ogrn                  AS 'ОГРН',
+    ok.okved_code           AS 'Код ОКВЭД',
+    ok.okved_name           AS 'Вид деятельности',
+    o.org_status            AS 'Статус'
+FROM organizations o, vidy_deyatelnosti ok
+WHERE o.okved = ok.okved_id
+  AND o.org_status = 'Действует'
+ORDER BY o.org_name;
+
+SELECT
+    o.org_name              AS 'Организация',
+    t.tax_name              AS 'Налог',
+    p.period_name           AS 'Период',
+    ti.accrued_amount       AS 'Начислено',
+    ti.received_amount      AS 'Поступило',
+    ti.unit_of_measure      AS 'Ед.изм.'
+FROM organizations o,
+     indicators ti,
+     taxes t,
+     periods p
+WHERE o.organization_id = ti.organization_id
+  AND ti.tax_id = t.tax_id
+  AND ti.period_id = p.period_id
+  AND p.period_name = '2025 год'
+  AND ti.received_amount > 1000000000
+ORDER BY ti.received_amount DESC;
+
+// организации с муниципалитетами
+SELECT
+    o.org_name                  AS 'Организация',
+    o.inn                       AS 'ИНН',
+    m.municipality_name         AS 'Муниципалитет',
+    m.oktmo_code                AS 'ОКТМО',
+    m.municipality_type         AS 'Тип'
+FROM organizations o, municipalities m
+WHERE o.municipality = m.municipality_id
+  AND m.municipality_type = 'городской округ'
+ORDER BY m.municipality_name, o.org_name; // фильтр: городские округа. сортировка: по названию муниципалитета, затем по организации
+
+
+SELECT
+    o.org_name              AS 'Организация',
+    t.tax_name              AS 'Налог',
+    m.municipality_name     AS 'Муниципалитет',
+    p.period_name           AS 'Период',
+    cs.status_name          AS 'Статус проверки',
+    ti.accrued_amount       AS 'Начислено',
+    ti.received_amount      AS 'Поступило',
+    ti.load_date            AS 'Дата загрузки',
+    ti.fns_form             AS 'Форма ФНС'
+FROM indicators ti
+INNER JOIN organizations o      ON ti.organization_id = o.organization_id
+INNER JOIN taxes t              ON ti.tax_id = t.tax_id
+INNER JOIN municipalities m     ON ti.municipality_id = m.municipality_id
+INNER JOIN periods p            ON ti.period_id = p.period_id
+INNER JOIN check_statuses cs    ON ti.status_id = cs.status_id
+ORDER BY ti.received_amount DESC; // INNER JOIN: показатели с полными справочными данными
+
+
+SELECT
+    o.org_name              AS 'Организация',
+    o.inn                   AS 'ИНН',
+    t.tax_name              AS 'Налог',
+    p.period_name           AS 'Период',
+    ti.received_amount      AS 'Поступило'
+FROM organizations o
+LEFT JOIN indicators ti ON o.organization_id = ti.organization_id
+LEFT JOIN taxes t           ON ti.tax_id = t.tax_id
+LEFT JOIN periods p         ON ti.period_id = p.period_id
+ORDER BY o.org_name, p.period_name; // LEFT JOIN: все организации и их показатели (если есть). показывает организации, даже если по ним еще нет показателей
+
+
+SELECT
+    o.org_name              AS 'Организация',
+    o.inn                   AS 'ИНН',
+    o.registr_date     AS 'Дата регистрации',
+    ok.okved_code           AS 'Код ОКВЭД',
+    ok.okved_name           AS 'Вид деятельности',
+    m.municipality_name     AS 'Муниципалитет',
+    m.municipality_type     AS 'Тип МО'
+FROM organizations o
+JOIN vidy_deyatelnosti ok               ON o.okved = ok.okved_id
+JOIN municipalities m       ON o.municipality = m.municipality_id
+ORDER BY m.municipality_name, o.org_name; // JOIN организаций с ОКВЭД и муниципалитетами
+
+
+SELECT
+    o.org_name              AS 'Организация',
+    p.period_name           AS 'Период',
+    ti.accrued_amount       AS 'Начислено',
+    ti.received_amount      AS 'Поступило',
+    (ti.accrued_amount - ti.received_amount) AS 'Разница (недоимка/переплата)'
+FROM indicators ti
+JOIN organizations o ON ti.organization_id = o.organization_id
+JOIN taxes t         ON ti.tax_id = t.tax_id
+JOIN periods p       ON ti.period_id = p.period_id
+WHERE t.tax_code = 'NP'
+ORDER BY p.start_date, ti.received_amount DESC; // JOIN показателей только по налогу на прибыль
+
+
+SELECT
+    COUNT(*)                        AS 'Количество записей',
+    SUM(accrued_amount)             AS 'Всего начислено',
+    SUM(received_amount)            AS 'Всего поступило',
+    AVG(received_amount)            AS 'Средняя сумма поступлений',
+    MAX(received_amount)            AS 'Максимальное поступление',
+    MIN(received_amount)            AS 'Минимальное поступление'
+FROM indicators; // общая сумма начислений и поступлений по всей базе
+
+
+SELECT
+    SUM(ti.received_amount)         AS 'Сумма поступлений по НП за 2025',
+    COUNT(*)                        AS 'Количество организаций',
+    AVG(ti.received_amount)         AS 'Среднее поступление',
+    MAX(ti.received_amount)         AS 'Максимум',
+    MIN(ti.received_amount)         AS 'Минимум'
+FROM indicators ti
+JOIN taxes t     ON ti.tax_id = t.tax_id
+JOIN periods p   ON ti.period_id = p.period_id
+WHERE t.tax_code = 'NP'
+  AND p.period_name = '2025 год'; // сумма поступлений по налогу на прибыль за 2025 год
+
+
+SELECT
+    ok.okved_code                   AS 'Код ОКВЭД',
+    ok.okved_name                   AS 'Вид деятельности',
+    COUNT(o.organization_id)        AS 'Количество организаций'
+FROM vidy_deyatelnosti ok
+LEFT JOIN organizations o ON ok.okved_id = o.okved
+GROUP BY ok.okved_id, ok.okved_code, ok.okved_name
+ORDER BY COUNT(o.organization_id) DESC; // количество организаций по видам деятельности
+
+
+SELECT
+    t.tax_name                      AS 'Налог',
+    MAX(ti.received_amount)         AS 'Макс. поступление',
+    MIN(ti.received_amount)         AS 'Мин. поступление',
+    AVG(ti.received_amount)         AS 'Среднее поступление'
+FROM indicators ti
+JOIN taxes t ON ti.tax_id = t.tax_id
+GROUP BY t.tax_id, t.tax_name
+ORDER BY MAX(ti.received_amount) DESC; // максимальная и минимальная сумма постпулений по каждому налогу
+
+
+// сумма поступлений по каждой организации (все периоды и налоги)
+SELECT
+    o.org_name                      AS 'Организация',
+    o.inn                           AS 'ИНН',
+    COUNT(ti.indicator_id)          AS 'Кол-во показателей',
+    SUM(ti.accrued_amount)          AS 'Всего начислено',
+    SUM(ti.received_amount)         AS 'Всего поступило'
+FROM indicators ti
+JOIN organizations o ON ti.organization_id = o.organization_id
+GROUP BY o.organization_id, o.org_name, o.inn
+HAVING SUM(ti.received_amount) > 1000000000
+ORDER BY SUM(ti.received_amount) DESC; // HAVING: только те, у кого сумма поступлений > 1 млрд руб.
+
+
+// поступления по видам деятельности за 2025 год
+SELECT
+    t.tax_name                      AS 'Налог',
+    t.tax_code                      AS 'Код',
+    COUNT(*)                        AS 'Кол-во записей',
+    SUM(ti.received_amount)         AS 'Сумма поступлений',
+    AVG(ti.received_amount)         AS 'Среднее'
+FROM indicators ti
+JOIN taxes t     ON ti.tax_id = t.tax_id
+JOIN periods p   ON ti.period_id = p.period_id
+WHERE p.period_name = '2025 год'
+GROUP BY t.tax_id, t.tax_name, t.tax_code
+HAVING SUM(ti.received_amount) > 500000000
+ORDER BY SUM(ti.received_amount) DESC; // HAVING: налоги, по которым суммарно поступило больше  500 млн
+
+
+// постпуления по муниципальным образованиям
+SELECT
+    m.municipality_name             AS 'Муниципалитет',
+    m.municipality_type             AS 'Тип',
+    COUNT(ti.indicator_id)          AS 'Кол-во показателей',
+    SUM(ti.received_amount)         AS 'Сумма поступлений',
+    MAX(ti.received_amount)         AS 'Макс. поступление'
+FROM indicators ti
+JOIN municipalities m ON ti.municipality_id = m.municipality_id
+GROUP BY m.municipality_id, m.municipality_name, m.municipality_type
+HAVING COUNT(ti.indicator_id) >= 2
+ORDER BY SUM(ti.received_amount) DESC; // HAVING: муниципалиетты, где есть хотя бы 2 показаетля
+
+
+// динамика поступлений налога на прибыль по годам (сравнение 2024 и 2025)
+SELECT
+    p.period_name                   AS 'Период',
+    COUNT(DISTINCT ti.organization_id) AS 'Кол-во организаций',
+    SUM(ti.accrued_amount)          AS 'Начислено',
+    SUM(ti.received_amount)         AS 'Поступило',
+    ROUND(SUM(ti.received_amount) / SUM(ti.accrued_amount) * 100, 2) AS 'Процент сбора, %'
+FROM indicators ti
+JOIN taxes t     ON ti.tax_id = t.tax_id
+JOIN periods p   ON ti.period_id = p.period_id
+WHERE t.tax_code = 'NP'
+  AND p.period_name IN ('2024 год', '2025 год')
+GROUP BY p.period_id, p.period_name
+ORDER BY p.period_name;
+
+
+// организации, у которых среднее поступление превышает 2 млрд
+SELECT
+    o.org_name                      AS 'Организация',
+    COUNT(*)                        AS 'Кол-во показателей',
+    ROUND(AVG(ti.received_amount), 2) AS 'Среднее поступление',
+    SUM(ti.received_amount)         AS 'Всего поступило'
+FROM indicators ti
+JOIN organizations o ON ti.organization_id = o.organization_id
+GROUP BY o.organization_id, o.org_name
+HAVING AVG(ti.received_amount) > 2000000000
+ORDER BY AVG(ti.received_amount) DESC;
+
+
+// сводка: потспуления по ОКВЭД и налогам
+SELECT
+    ok.okved_code                   AS 'Код ОКВЭД',
+    ok.okved_name                   AS 'Вид деятельности',
+    t.tax_name                      AS 'Налог',
+    COUNT(*)                        AS 'Кол-во',
+    SUM(ti.received_amount)         AS 'Сумма поступлений'
+FROM indicators ti
+JOIN organizations o ON ti.organization_id = o.organization_id
+JOIN vidy_deyatelnosti ok        ON o.okved = ok.okved_id
+JOIN taxes t         ON ti.tax_id = t.tax_id
+GROUP BY ok.okved_id, ok.okved_code, ok.okved_name, t.tax_id, t.tax_name
+HAVING SUM(ti.received_amount) > 0
+ORDER BY ok.okved_code, SUM(ti.received_amount) DESC;
+
+ВЛОЖЕННЫЕ ПОДЗАПРОСЫ (ОПЕРАТОРЫ IN И ALL)
+
+// организации, у которых есть показатели по налогу на прибыль (IN)
+SELECT
+    o.org_name              AS 'Организация',
+    o.inn                   AS 'ИНН',
+    o.org_status            AS 'Статус'
+FROM organizations o
+WHERE o.organization_id IN (
+    SELECT ti.organization_id
+    FROM indicators ti
+    JOIN taxes t ON ti.tax_id = t.tax_id
+    WHERE t.tax_code = 'NP'
+)
+ORDER BY o.org_name;
+
+
+SELECT
+    o.org_name              AS 'Организация',
+    o.inn                   AS 'ИНН'
+FROM organizations o
+WHERE o.organization_id NOT IN (
+    SELECT ti.organization_id
+    FROM indicators ti
+    JOIN taxes t ON ti.tax_id = t.tax_id
+    WHERE t.tax_code = 'NDPI'
+)
+ORDER BY o.org_name;
+
+
+// показатели, сумма поступлений которых больше всех поступлений по транспортному налогу (оператор ALL)
+SELECT
+    o.org_name              AS 'Организация',
+    t.tax_name              AS 'Налог',
+    ti.received_amount      AS 'Поступило'
+FROM indicators ti
+JOIN organizations o ON ti.organization_id = o.organization_id
+JOIN taxes t         ON ti.tax_id = t.tax_id
+WHERE ti.received_amount > ALL (
+    SELECT ti2.received_amount
+    FROM indicators ti2
+    JOIN taxes t2 ON ti2.tax_id = t2.tax_id
+    WHERE t2.tax_code = 'TN'
+)
+ORDER BY ti.received_amount DESC;
+
+
+// организации с поступлением выше среднего по всей базе (скалярный подзапрос)
+SELECT
+    o.org_name              AS 'Организация',
+    t.tax_name              AS 'Налог',
+    p.period_name           AS 'Период',
+    ti.received_amount      AS 'Поступило'
+FROM indicators ti
+JOIN organizations o ON ti.organization_id = o.organization_id
+JOIN taxes t         ON ti.tax_id = t.tax_id
+JOIN periods p       ON ti.period_id = p.period_id
+WHERE ti.received_amount > (
+    SELECT AVG(received_amount)
+    FROM indicators
+)
+ORDER BY ti.received_amount DESC;
+
+
+// муниципалитеты, в которых есть организации с показателями за 2025 год (подзапрос в WHERE с EXISTS)
+SELECT
+    m.municipality_name     AS 'Муниципалитет',
+    m.oktmo_code            AS 'ОКТМО'
+FROM municipalities m
+WHERE EXISTS (
+    SELECT 1
+    FROM organizations o
+    JOIN indicators ti ON o.organization_id = ti.organization_id
+    JOIN periods p ON ti.period_id = p.period_id
+    WHERE o.municipality = m.municipality_id
+      AND p.period_name = '2025 год'
+)
+ORDER BY m.municipality_name;
+
+
+// организации, чиь поступления по НП за 2025 больше, чем у всех организаций по НП за 2024 (ALL)
+SELECT
+    o.org_name              AS 'Организация',
+    ti.received_amount      AS 'Поступило в 2025'
+FROM indicators ti
+JOIN organizations o ON ti.organization_id = o.organization_id
+JOIN taxes t         ON ti.tax_id = t.tax_id
+JOIN periods p       ON ti.period_id = p.period_id
+WHERE t.tax_code = 'NP'
+  AND p.period_name = '2025 год'
+  AND ti.received_amount > ALL (
+      SELECT ti2.received_amount
+      FROM indicators ti2
+      JOIN taxes t2   ON ti2.tax_id = t2.tax_id
+      JOIN periods p2 ON ti2.period_id = p2.period_id
+      WHERE t2.tax_code = 'NP'
+        AND p2.period_name = '2024 год'
+  );
+
+ФУНКЦИИ УПРАВЛЕНИЯ ПОТОКОМ (IF, CASE)
+
+// CASE: оценка уровня поступлений
+SELECT
+    o.org_name              AS 'Организация',
+    t.tax_name              AS 'Налог',
+    ti.received_amount      AS 'Поступило',
+    CASE
+        WHEN ti.received_amount >= 10000000000 THEN 'Очень крупные'
+        WHEN ti.received_amount >= 1000000000  THEN 'Крупные'
+        WHEN ti.received_amount >= 100000000   THEN 'Средние'
+        ELSE 'Небольшие'
+    END                     AS 'Категория поступлений'
+FROM indicators ti
+JOIN organizations o ON ti.organization_id = o.organization_id
+JOIN taxes t         ON ti.tax_id = t.tax_id
+ORDER BY ti.received_amount DESC;
+
+
+// CASE: статус собираемости (начислено/поступило)
+SELECT
+    o.org_name              AS 'Организация',
+    t.tax_name              AS 'Налог',
+    p.period_name           AS 'Период',
+    ti.accrued_amount       AS 'Начислено',
+    ti.received_amount      AS 'Поступило',
+    CASE
+        WHEN ti.received_amount >= ti.accrued_amount THEN 'Полная оплата'
+        WHEN ti.received_amount >= ti.accrued_amount * 0.95 THEN 'Почти полная'
+        WHEN ti.received_amount >= ti.accrued_amount * 0.80 THEN 'Частичная оплата'
+        ELSE 'Значительная недоимка'
+    END                     AS 'Статус оплаты',
+    ROUND(
+        (ti.received_amount / ti.accrued_amount) * 100, 2
+    )                       AS 'Процент сбора, %'
+FROM indicators ti
+JOIN organizations o ON ti.organization_id = o.organization_id
+JOIN taxes t         ON ti.tax_id = t.tax_id
+JOIN periods p       ON ti.period_id = p.period_id
+ORDER BY (ti.received_amount / ti.accrued_amount);
+
+
+// IF: признак крупного налогоплательщика
+SELECT
+    o.org_name              AS 'Организация',
+    o.inn                   AS 'ИНН',
+    SUM(ti.received_amount) AS 'Всего поступило',
+    IF(SUM(ti.received_amount) > 5000000000,
+       'Крупный налогоплательщик',
+       'Обычный налогоплательщик'
+    )                       AS 'Категория'
+FROM indicators ti
+JOIN organizations o ON ti.organization_id = o.organization_id
+GROUP BY o.organization_id, o.org_name, o.inn
+ORDER BY SUM(ti.received_amount) DESC;
+
+
+// CASE+группировка: распределение показателей по статусам проверки
+SELECT
+    CASE cs.status_name
+        WHEN 'Проверено'         THEN 'Готово к отчётности'
+        WHEN 'Ожидает проверки'  THEN 'Требует проверки'
+        WHEN 'Ошибка'            THEN 'Требует исправления'
+        WHEN 'Требует уточнения' THEN 'Требует уточнения'
+        ELSE 'Неизвестный статус'
+    END                     AS 'Действие',
+    COUNT(*)                AS 'Количество показателей',
+    SUM(ti.received_amount) AS 'Сумма поступлений'
+FROM indicators ti
+JOIN check_statuses cs ON ti.status_id = cs.status_id
+GROUP BY cs.status_name
+ORDER BY COUNT(*) DESC;
+
+ПРЕДСТАВЛЕНИЯ (CREATE VIEW) И ВРЕМЕННЫЕ ПРЕДСТАВЛЕНИЯ (WITH)
+
+// сводка поступлений по организациям (наиболее востребованный аналитический запрос)
+CREATE OR REPLACE VIEW v_org_tax_summary AS
+SELECT
+    o.organization_id,
+    o.org_name,
+    o.inn,
+    o.org_status,
+    m.municipality_name,
+    ok.okved_code,
+    ok.okved_name,
+    COUNT(ti.indicator_id)          AS indicators_count,
+    SUM(ti.accrued_amount)          AS total_accrued,
+    SUM(ti.received_amount)         AS total_received,
+    ROUND(AVG(ti.received_amount), 2) AS avg_received,
+    ROUND(
+        SUM(ti.received_amount) / NULLIF(SUM(ti.accrued_amount), 0) * 100, 2
+    )                               AS collection_pct
+FROM organizations o
+LEFT JOIN indicators ti ON o.organization_id = ti.organization_id
+LEFT JOIN municipalities m  ON o.municipality = m.municipality_id
+LEFT JOIN vidy_deyatelnosti ok ON o.okved = ok.okved_id
+GROUP BY
+    o.organization_id, o.org_name, o.inn, o.org_status,
+    m.municipality_name, ok.okved_code, ok.okved_name;
+
+SELECT
+    org_name            AS 'Организация',
+    inn                 AS 'ИНН',
+    municipality_name   AS 'Муниципалитет',
+    total_received      AS 'Всего поступило',
+    collection_pct      AS 'Процент сбора, %'
+FROM v_org_tax_summary
+WHERE total_received IS NOT NULL
+ORDER BY total_received DESC; // использование представления
+
+
+// временное представление (CTE): оператор WITH. топ организаций по поступлениям за 2025 год и их доля
+WITH tax_2025 AS (
+    SELECT
+        o.organization_id,
+        o.org_name,
+        o.inn,
+        SUM(ti.received_amount) AS total_2025
+    FROM indicators ti
+    JOIN organizations o ON ti.organization_id = o.organization_id
+    JOIN periods p       ON ti.period_id = p.period_id
+    WHERE p.period_name = '2025 год'
+    GROUP BY o.organization_id, o.org_name, o.inn
+),
+grand_total AS (
+    SELECT SUM(total_2025) AS overall FROM tax_2025
+)
+SELECT
+    t.org_name                              AS 'Организация',
+    t.inn                                   AS 'ИНН',
+    t.total_2025                            AS 'Поступило за 2025',
+    ROUND(t.total_2025 / g.overall * 100, 2) AS 'Доля, %'
+FROM tax_2025 t
+CROSS JOIN grand_total g
+ORDER BY t.total_2025 DESC;
+
+
+// WTH: сравнение поступлений за 2024 и 2025 по организациям
+WITH np_by_year AS (
+    SELECT
+        o.organization_id,
+        o.org_name,
+        p.period_name,
+        SUM(ti.received_amount) AS received
+    FROM indicators ti
+    JOIN organizations o ON ti.organization_id = o.organization_id
+    JOIN taxes t         ON ti.tax_id = t.tax_id
+    JOIN periods p       ON ti.period_id = p.period_id
+    WHERE t.tax_code = 'NP'
+      AND p.period_name IN ('2024 год', '2025 год')
+    GROUP BY o.organization_id, o.org_name, p.period_name
+)
+SELECT
+    y24.org_name            AS 'Организация',
+    y24.received            AS 'НП 2024',
+    y25.received            AS 'НП 2025',
+    ROUND(
+        (y25.received - y24.received) / NULLIF(y24.received, 0) * 100, 2
+    )                       AS 'Изменение, %'
+FROM np_by_year y24
+JOIN np_by_year y25
+    ON y24.organization_id = y25.organization_id
+WHERE y24.period_name = '2024 год'
+  AND y25.period_name = '2025 год'
+ORDER BY (y25.received - y24.received) DESC;
+
+АНАЛИЗ И ОПТИМИЗАЦИЯ (EXPLAIN + CREATE INDEX)
+
+// анализ запроса до создания индексов
+EXPLAIN
+SELECT
+    o.org_name,
+    t.tax_name,
+    ti.received_amount
+FROM indicators ti
+JOIN organizations o ON ti.organization_id = o.organization_id
+JOIN taxes t         ON ti.tax_id = t.tax_id
+WHERE ti.received_amount > 1000000000
+  AND t.tax_code = 'NP'
+ORDER BY ti.received_amount DESC;
+
+
+// создание индексов для ускорения частых запросов
+CREATE INDEX idx_ti_received ON indicators (received_amount);
+CREATE INDEX idx_taxes_code ON taxes (tax_code);
+CREATE INDEX idx_periods_name ON periods (period_name);
+CREATE INDEX idx_ti_org_tax ON indicators (organization_id, tax_id);
+CREATE INDEX idx_org_status ON organizations (org_status);
+
+
+// анализ того же запроса после создания индексов
+EXPLAIN
+SELECT
+    o.org_name,
+    t.tax_name,
+    ti.received_amount
+FROM indicators ti
+JOIN organizations o ON ti.organization_id = o.organization_id
+JOIN taxes t         ON ti.tax_id = t.tax_id
+WHERE ti.received_amount > 1000000000
+  AND t.tax_code = 'NP'
+ORDER BY ti.received_amount DESC;
+
+
+// анализ запроса с группировкой
+EXPLAIN
+SELECT
+    o.org_name,
+    SUM(ti.received_amount) AS total
+FROM indicators ti
+JOIN organizations o ON ti.organization_id = o.organization_id
+GROUP BY o.organization_id, o.org_name
+HAVING SUM(ti.received_amount) > 1000000000;
